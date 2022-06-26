@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include "elf64.h"
 
 #define NOT_EXEC(name)										\
 {															\
@@ -8,7 +10,7 @@
 
 int check_exec(FILE* file, char* exec_name)
 {
-	int ch, ch1;
+	/*int ch, ch1;
 	
 	for(int i = 0; i < 16; i++)
 	{
@@ -18,7 +20,12 @@ int check_exec(FILE* file, char* exec_name)
 	{
 		if(ch != 2 || ch1 != 0)	NOT_EXEC(exec_name); 
 	}
-	else NOT_EXEC(exec_name);
+	else NOT_EXEC(exec_name);*/
+
+	Elf64_Ehdr header;
+	if(fread(&header, sizeof(Elf64_Ehdr), 1, file) != 1 || header.e_type != 2)
+		NOT_EXEC(name);
+
 	return 0;
 }											
 
@@ -43,7 +50,7 @@ int main(int argc, char **argv)
 		fclose(file);
 		return 1;
 	}
-	
+	printf("\nFile is Exec!\n");
 	fclose(file);
 	return 0;
 }

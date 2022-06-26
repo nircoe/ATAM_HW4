@@ -1,0 +1,20 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/student/Desktop/ATAM_HW4/debugger.c
+stdio.h
+-
+stdlib.h
+-
+elf64.h
+/home/student/Desktop/ATAM_HW4/elf64.h
+
+/home/student/Desktop/ATAM_HW4/elf64.h
+stdint.h
+-
+
