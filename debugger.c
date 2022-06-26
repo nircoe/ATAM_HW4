@@ -6,28 +6,46 @@
 {															\
 	printf("PRF:: %s not an executable! :(\n", exec_name);	\
 	return 1;												\
-}			
+}		
 
-int check_exec(FILE* file, char* exec_name)
+#define CLOSE_AND_RETURN_ERROR(file)						\
+{															\
+	fclose(file);											\
+	return 1;												\
+}
+
+int check_exec(FILE* file, char* exec_name, Elf64_Ehdr* header)
 {
-	/*int ch, ch1;
-	
-	for(int i = 0; i < 16; i++)
-	{
-		if((ch = fgetc(file)) == EOF) NOT_EXEC(exec_name);
-	}
-	if((ch = fgetc(file)) != EOF || (ch1 = fgetc(file)) != EOF )
-	{
-		if(ch != 2 || ch1 != 0)	NOT_EXEC(exec_name); 
-	}
-	else NOT_EXEC(exec_name);*/
-
-	Elf64_Ehdr header;
-	if(fread(&header, sizeof(Elf64_Ehdr), 1, file) != 1 || header.e_type != 2)
+	if(fread(header, sizeof(Elf64_Ehdr), 1, file) != 1 || header->e_type != 2)
 		NOT_EXEC(name);
 
 	return 0;
-}											
+}		
+
+int check_func(FILE* file, char* func_name, Elf64_Ehdr* header, Elf64_Shdr* section_header)
+{
+	if(fseek(file, header->e_shoff, SEEK_SET) != 0) return -1; // go to section header offset
+	for(int i = 0; i < header->e_shnum; i++) // iterate over section header entries
+	{
+		if(fread(section_header, sizeof(Elf64_Shdr), 1, file) != 1) return -1; // read section header entry
+		if(section_header->sh_name == ".symtab") // need to check how to translate ".symtab" to Elf64_Word
+		{
+			if(fseek(file, section_header->sh_offset, SEEK_SET) != 0) return -1; // go to symbol table offset
+			for(int j = 0; j < (section_header->sh_size / section_header->sh_entsize); j++) // iterate over symbol table entries
+			{
+				Elf64_Sym symbol_entry;
+				if(fread(&symbol_entry, sizeof(Elf64_Sym), 1, file) != 1) return -1; // read symbol table entry
+				if(symbol_entry.st_name == func_name) // need to check how to translate func name from Elf64_Word to char*
+					return 0;
+			}
+		}
+	}
+	
+	printf("PRF:: <function name> not found!\n");
+	return -1; // didn't find the function
+	
+
+}
 
 int main(int argc, char **argv)
 {
@@ -45,12 +63,23 @@ int main(int argc, char **argv)
 	FILE *file;
 	file = fopen(exec_name, "rb");
 	if (file == NULL) exit(1);
-	if(check_exec(file, exec_name) != 0) 
+
+	Elf64_Ehdr* header;
+	Elf64_Shdr* section_header;
+
+	if(check_exec(file, exec_name, header) != 0) 
 	{	
-		fclose(file);
-		return 1;
+		CLOSE_AND_RETURN_ERROR(file);
 	}
 	printf("\nFile is Exec!\n");
+
+	if(check_func(file, func_name, header, section_header) != 0)
+	{
+		CLOSE_AND_RETURN_ERROR(file);
+	}
+
+	printf("\nFunction exist!\n");
+
 	fclose(file);
 	return 0;
 }
