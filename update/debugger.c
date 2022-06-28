@@ -28,7 +28,8 @@
 	return -1;												\
 }
 
-
+typedef int func(void);				// func pointer
+static size_t call_counter = 0;
 
 int check_exec(FILE* file, char* exec_name, Elf64_Ehdr* header)
 {
@@ -55,7 +56,7 @@ int check_func(FILE* file, char* func_name, Elf64_Ehdr* header, Elf64_Shdr* sect
 	if(i == header->e_shnum)//if you have iterated over the entire section headers, then you haven't found the strtab
 		return -1;*/
 		
-    if(fseek(file, header.e_shoff + header.e_shstrndx * sizeof(Elf64_Shdr), SEEK_SET) != 0) return -1;	//go to string table's section header
+    if(fseek(file, header->e_shoff + header->e_shstrndx * sizeof(Elf64_Shdr), SEEK_SET) != 0) return -1;	//go to string table's section header
 	if(fread(section_header, sizeof(Elf64_Shdr), 1, file) != 1) return -1;	//read section header
 	if(fseek(file, section_header->sh_offset, SEEK_SET) != 0) return -1; // go to string table offset
 	char* strtab = (char*)malloc(sizeof(char) * sizeof(section_header->sh_size));	//get memory to store strtab
@@ -74,7 +75,10 @@ int check_func(FILE* file, char* func_name, Elf64_Ehdr* header, Elf64_Shdr* sect
 			{
 				if(fread(symbol_entry, sizeof(Elf64_Sym), 1, file) != 1) FREE_AND_RETURN_ERROR; // read symbol table entry
 				if(strcmp(strtab + symbol_entry->st_name, func_name) == 0) // compare the name of the header with the given function name
+				{
+					free(strtab);
 					return 0;
+				}
 			}
 		}
 	}
@@ -86,7 +90,7 @@ int check_func(FILE* file, char* func_name, Elf64_Ehdr* header, Elf64_Shdr* sect
 
 Elf64_Addr check_UND(FILE* file, char* func_name, Elf64_Ehdr* header, Elf64_Shdr* section_header, Elf64_Sym* symbol_entry)
 {
-	if(fseek(file, header.e_shoff + header.e_shstrndx * sizeof(Elf64_Shdr), SEEK_SET) != 0) return 0;	//go to string table's section header
+	if(fseek(file, header->e_shoff + header->e_shstrndx * sizeof(Elf64_Shdr), SEEK_SET) != 0) return 0;	//go to string table's section header
 	if(fread(section_header, sizeof(Elf64_Shdr), 1, file) != 1) return 0;	//read section header
 	if(fseek(file, section_header->sh_offset, SEEK_SET) != 0) return 0; // go to string table offset
 	char* strtab = (char*)malloc(sizeof(char) * sizeof(section_header->sh_size));	//get memory to store strtab
@@ -119,7 +123,7 @@ Elf64_Addr check_UND(FILE* file, char* func_name, Elf64_Ehdr* header, Elf64_Shdr
 		{
 			if(fseek(file, section_header->sh_offset + (symbol_entry->st_name * sizeof(Elf64_Rela)), SEEK_SET) != 0) FREE_AND_RETURN_ZERO_ERROR; // go to function in PLT
 			if(fread(&realloc_header, sizeof(Elf64_Rela), 1, file) != 1) FREE_AND_RETURN_ZERO_ERROR; // read section header entry
-			return realloc_header->r_offset;
+			return realloc_header.r_offset;
 		}
 	}
 
@@ -160,15 +164,17 @@ int main(int argc, char **argv)
 		CLOSE_AND_RETURN_ERROR(file);
 	}
 
-	if(ELF64_ST_BIND(symbol_entry->st_info) != GLOBAL_CONSTANT)
+	if(ELF64_ST_BIND(symbol_entry.st_info) != GLOBAL_CONSTANT)
 	{
 		printf("PRF:: <function name> is not a global symbol! :(\n");
 		CLOSE_AND_RETURN_ERROR(file);
 	}
 	printf("\nFunction exist and it GLOBAL!\n");
 
-	Elf64_Addr function_addr
-	if(symbol_entry->st_shndx == SHN_UNDEF) // function not in file, will get in runtime only (not sure 100% about this macro)
+	call_counter++; // needs to check if call_counter will stay at same value between runs
+
+	Elf64_Addr function_addr;
+	if(symbol_entry.st_shndx == SHN_UNDEF) // function not in file, will get in runtime only (not sure 100% about this macro)
 	{
 		function_addr = check_UND(file, func_name, &header, &section_header, &symbol_entry);
 		if(function_addr == 0)
@@ -179,9 +185,14 @@ int main(int argc, char **argv)
 	}
 	else								// function in file, needs to check which section and search for it
 	{
-		
+		function_addr = symbol_entry.st_value; // in executable the st_value is the memory address that he will load in
 	}
+
+	func* f = (func*)(function_addr);
+	int result = f();
 	
+	printf("PRF:: run %d returned with %d\n", call_counter, result);
+
 	fclose(file);
 	return 0;
 }
