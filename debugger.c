@@ -15,7 +15,6 @@
 #include "elf64.h"
 
 #define GLOBAL_CONSTANT 1 // according to oracle website
-#define MAX_SIZE 200
 #define TYPE_EXEC 2
 
 #define CLOSE_AND_RETURN_ERROR(file)						\
@@ -167,8 +166,9 @@ pid_t run_target(const char* programname, char** argv)
 
 void run_breakpoint_debugger(pid_t child_pid, Elf64_Addr addr, bool func_in_file)
 {
-    int wait_status;
+    int wait_status, cnt = 0;
 	size_t call_counter = 0;
+	unsigned long long correct_rsp;
     struct user_regs_struct regs;
 	unsigned long backup_addr, original_data, data_trap, end_of_func_addr, return_data, return_trap;
 	backup_addr = addr;
@@ -194,6 +194,8 @@ void run_breakpoint_debugger(pid_t child_pid, Elf64_Addr addr, bool func_in_file
 	{
 		// get the registers
 		ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
+		
+		correct_rsp = regs.rsp + 8;
 		// restore the original instruction
 		regs.rip--;
 		ptrace(PTRACE_SETREGS, child_pid, 0, &regs);
@@ -214,9 +216,25 @@ void run_breakpoint_debugger(pid_t child_pid, Elf64_Addr addr, bool func_in_file
 		ptrace(PTRACE_CONT, child_pid, NULL, NULL);
 		waitpid(child_pid, &wait_status, 0);
 
-		// get the registers for the return value (%rax)
 		ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
-		
+		while(regs.rsp != correct_rsp)
+		{
+			//printf("cnt = %d\n", ++cnt);
+			regs.rip--;
+			ptrace(PTRACE_SETREGS, child_pid, 0, &regs);
+			ptrace(PTRACE_POKETEXT, child_pid, (void *)end_of_func_addr, (void *)return_data);
+
+			ptrace(PTRACE_SINGLESTEP, child_pid, NULL, NULL);
+			waitpid(child_pid, &wait_status, 0);
+
+			ptrace(PTRACE_POKETEXT, child_pid, (void *)end_of_func_addr, (void *)return_trap); // create breakpoint at end of function
+
+			ptrace(PTRACE_CONT, child_pid, NULL, NULL);
+			waitpid(child_pid, &wait_status, 0);
+
+			ptrace(PTRACE_GETREGS, child_pid, 0, &regs);
+		}
+
 		call_counter++;
 		printf("PRF:: run #%ld returned with %d\n", call_counter, (int)regs.rax); // print the returned value
 
@@ -229,7 +247,7 @@ void run_breakpoint_debugger(pid_t child_pid, Elf64_Addr addr, bool func_in_file
 		{
 			addr = ptrace(PTRACE_PEEKTEXT, child_pid, (void*)backup_addr, NULL);
 			original_data = ptrace(PTRACE_PEEKTEXT, child_pid, (void*)addr, NULL);
- 			data_trap = (original_data & 0xFFFFFFFFFFFFFF00) | 0xCC;
+			data_trap = (original_data & 0xFFFFFFFFFFFFFF00) | 0xCC;
 		}
 
 		// set the breakpoint again at the start of the function
@@ -239,6 +257,7 @@ void run_breakpoint_debugger(pid_t child_pid, Elf64_Addr addr, bool func_in_file
 		// at the start of the function or finished the program
 		ptrace(PTRACE_CONT, child_pid, NULL, NULL);
 		waitpid(child_pid, &wait_status, 0);
+
 	}
 }
 
